@@ -1,62 +1,49 @@
-import os
 import cv2
-import easyocr
-import re
+import os
 from pathlib import Path
 
-# Input: cropped plates
-PLATE_DIR = "outputs/plates"
-
-# Output: labeled characters
-OUT_DIR = "data/ocr_chars"
+PLATE_DIR = "outputs/plates"         # cropped plates
+OUT_DIR = "data/ocr_chars"           # output for characters
 os.makedirs(OUT_DIR, exist_ok=True)
 
-reader = easyocr.Reader(["en"])  # English letters/numbers
+def sort_contours(cnts):
+    bboxes = [cv2.boundingRect(c) for c in cnts]
+    cnts, bboxes = zip(*sorted(zip(cnts, bboxes), key=lambda x: x[1][0]))
+    return cnts, bboxes
 
-print("Running OCR on plates in:", PLATE_DIR)
+print("\nExtracting characters using contour detection...\n")
 
-def clean_text(t):
-    # Keep only alphanumeric characters A-Z + 0-9
-    return re.sub(r"[^A-Za-z0-9]", "", t).upper()
-
-
-# Iterate through plate images
-for plate_file in os.listdir(PLATE_DIR):
-    if not plate_file.lower().endswith((".jpg", ".png", ".jpeg")):
+for file in os.listdir(PLATE_DIR):
+    if not file.endswith((".jpg",".png",".jpeg")):
         continue
 
-    plate_path = os.path.join(PLATE_DIR, plate_file)
-    print(f"\nProcessing plate: {plate_path}")
-
-    img = cv2.imread(plate_path)
+    path = os.path.join(PLATE_DIR, file)
+    img = cv2.imread(path)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    # OCR reading
-    result = reader.readtext(gray)
+    # Binarize
+    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
 
-    if len(result) == 0:
-        print("OCR failed, skipping.")
-        continue
+    # Find contours
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours, boxes = sort_contours(contours)
 
-    text = clean_text(result[0][1])
-    print("OCR detected text:", text)
+    index = 0
+    for c, b in zip(contours, boxes):
+        x, y, w, h = b
 
-    # Segment characters horizontally
-    h, w = gray.shape
-    char_width = w // max(1, len(text))
+        # Remove small blobs
+        if w < 15 or h < 30:
+            continue
 
-    for i, ch in enumerate(text):
-        # Create folder for character
-        class_dir = os.path.join(OUT_DIR, ch)
-        os.makedirs(class_dir, exist_ok=True)
+        char_crop = gray[y:y+h, x:x+w]
 
-        # Crop character region
-        x1 = i * char_width
-        x2 = (i + 1) * char_width
-        char_img = img[0:h, x1:x2]
+        # save to UNLABELED folder (you label manually later)
+        save_dir = os.path.join(OUT_DIR, "unlabeled")
+        os.makedirs(save_dir, exist_ok=True)
 
-        out_path = os.path.join(class_dir, f"{Path(plate_file).stem}_{i}.jpg")
-        cv2.imwrite(out_path, char_img)
-        print("Saved char:", ch, "→", out_path)
+        save_path = os.path.join(save_dir, f"{Path(file).stem}_{index}.jpg")
+        cv2.imwrite(save_path, char_crop)
+        index += 1
 
-print("\nDONE: Characters labeled under data/ocr_chars/")
+print("\nDONE — Characters saved inside data/ocr_chars/unlabeled\n")
