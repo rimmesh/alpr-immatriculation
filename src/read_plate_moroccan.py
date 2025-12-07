@@ -2,7 +2,7 @@ import cv2
 import easyocr
 import re
 
-# Load Arabic + English OCR
+# Arabic + English reader
 reader_ma = easyocr.Reader(['ar', 'en'], gpu=False)
 
 def format_moroccan_plate(text):
@@ -43,7 +43,6 @@ def read_moroccan_plate(image_path):
 
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    # Upscale for OCR
     h, w = gray.shape
     if max(h, w) < 200:
         gray = cv2.resize(gray, (w * 2, h * 2), interpolation=cv2.INTER_CUBIC)
