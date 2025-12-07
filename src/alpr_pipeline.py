@@ -1,65 +1,26 @@
-import cv2
-import torch
-import torch.nn as nn
-from torchvision import transforms, models
-from ultralytics import YOLO
 import os
-import numpy as np
+import cv2
+from ocr_engine import read_plate_easyocr
 
-YOLO_MODEL = "models/yolo/lp_detector_v11_best.pt"
-OCR_MODEL  = "models/ocr/cnn_ocr.pth"
+PLATES_DIR = "outputs/plates"
 
-detector = YOLO(YOLO_MODEL)
+print("\n=== Testing OCR on all detected plates ===\n")
 
-CLASSES = sorted(os.listdir("data/ocr_chars"))
-
-ocr_model = models.resnet18(weights=None)
-ocr_model.fc = nn.Linear(512, len(CLASSES))
-ocr_model.load_state_dict(torch.load(OCR_MODEL, map_location="cpu"))
-ocr_model.eval()
-
-transform = transforms.Compose([
-    transforms.Grayscale(num_output_channels=1),
-    transforms.Resize((64,64)),
-    transforms.ToTensor(),
+plate_images = sorted([
+    f for f in os.listdir(PLATES_DIR)
+    if f.lower().endswith((".jpg", ".png", ".jpeg"))
 ])
 
-def predict_char(gray_char):
-    img = transform(gray_char).unsqueeze(0).repeat(1,3,1,1)
-    with torch.no_grad():
-        out = ocr_model(img)
-        _, pred = torch.max(out,1)
-    return CLASSES[pred.item()]
+print(f"Found {len(plate_images)} plates\n")
 
-def predict_plate(image_path):
+for name in plate_images:
+    path = os.path.join(PLATES_DIR, name)
+    img = cv2.imread(path)
 
-    results = detector(image_path)
-    final_plate = ""
+    if img is None:
+        print(f"{name} → ❌ Image read failed")
+        continue
 
-    for r in results:
-        boxes = r.boxes.xyxy.cpu().numpy()
-        im0 = r.orig_img
+    text, conf = read_plate_easyocr(img)
 
-        for box in boxes:
-            x1,y1,x2,y2 = map(int,box[:4])
-            crop = im0[y1:y2,x1:x2]
-
-            gray = cv2.cvtColor(crop,cv2.COLOR_BGR2GRAY)
-            h,w = gray.shape
-
-            char_w = w // 6  # assume 6-character plate
-
-            predicted = []
-            for i in range(6):
-                x1 = i*char_w
-                x2 = (i+1)*char_w
-                char_crop = gray[:,x1:x2]
-                predicted.append(predict_char(char_crop))
-
-            final_plate = "".join(predicted)
-            print("Predicted Plate:", final_plate)
-
-    return final_plate
-
-if __name__ == "__main__":
-    predict_plate("data/yolo/test/images/your_test.jpg")
+    print(f"{name} → {text} (conf={conf:.2f})")

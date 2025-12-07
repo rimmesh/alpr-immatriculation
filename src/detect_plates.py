@@ -1,56 +1,60 @@
 import os
 import cv2
-import glob
+import numpy as np
 from ultralytics import YOLO
-from pathlib import Path
 
 MODEL_PATH = "models/yolo/lp_detector_v11_best.pt"
-INPUT_DIRS = [
-    "data/yolo/test/images",
-    "data/raw/moroccan/DATA"
-]
-OUT_DET_DIR = "outputs/detections"
 OUT_PLATE_DIR = "outputs/plates"
-
-os.makedirs(OUT_DET_DIR, exist_ok=True)
 os.makedirs(OUT_PLATE_DIR, exist_ok=True)
 
 model = YOLO(MODEL_PATH)
 
-image_paths = []
+def detect_plate(image_path):
+    img = cv2.imread(image_path)
+    if img is None:
+        print("Image not readable")
+        return None
 
-for d in INPUT_DIRS:
-    image_paths += glob.glob(os.path.join(d, "*.jpg"))
-    image_paths += glob.glob(os.path.join(d, "*.png"))
-    image_paths += glob.glob(os.path.join(d, "*.jpeg"))
+    results = model(img, conf=0.40)
 
+    if len(results) == 0 or results[0].boxes is None:
+        print(" No plate detected")
+        return None
 
-print(f"Found {len(image_paths)} images")
+    boxes = results[0].boxes.xyxy.cpu().numpy()
 
-for img_path in image_paths:
-    print("\nProcessing:", img_path)
-    img_name = Path(img_path).stem
+    # ✅ Pick the LARGEST box (most reliable)
+    best_box = None
+    best_area = 0
 
-    results = model(img_path, conf=0.4)
+    for b in boxes:
+        x1, y1, x2, y2 = map(int, b[:4])
+        area = (x2 - x1) * (y2 - y1)
+        if area > best_area:
+            best_area = area
+            best_box = (x1, y1, x2, y2)
 
-    for r in results:
-        det_img = r.plot()
-        cv2.imwrite(f"{OUT_DET_DIR}/{img_name}_det.jpg", det_img)
+    if best_box is None:
+        return None
 
-        im0 = r.orig_img
-        boxes = r.boxes.xyxy.cpu().numpy()
-        confs = r.boxes.conf.cpu().numpy()
+    x1, y1, x2, y2 = best_box
 
-        for i, box in enumerate(boxes):
-            x1, y1, x2, y2 = map(int, box[:4])
-            conf = confs[i]
+    # ✅ EXPAND box to fix half-crop Moroccan issue
+    h, w, _ = img.shape
+    expand_x = int((x2 - x1) * 0.45)
+    expand_y = int((y2 - y1) * 0.35)
 
-            if conf < 0.45: continue
-            w, h = x2 - x1, y2 - y1
-            if w < 80 or h < 30: continue
-            if w/h < 1.5: continue
+    x1 = max(0, x1 - expand_x)
+    y1 = max(0, y1 - expand_y)
+    x2 = min(w, x2 + expand_x)
+    y2 = min(h, y2 + expand_y)
 
-            crop = im0[y1:y2, x1:x2]
-            cv2.imwrite(f"{OUT_PLATE_DIR}/{img_name}_plate_{i}.jpg", crop)
+    crop = img[y1:y2, x1:x2]
+    if crop.size == 0:
+        print("Empty crop")
+        return None
 
-print("\nDONE.")
+    crop_path = os.path.join(OUT_PLATE_DIR, "plate_crop.jpg")
+    cv2.imwrite(crop_path, crop)
+
+    return crop_path
