@@ -1,47 +1,41 @@
 import cv2
 import easyocr
 import re
-import numpy as np
 
-reader = easyocr.Reader(['en'], gpu=False)
+# English OCR only (most stable)
+reader_en = easyocr.Reader(['en'], gpu=False)
+
+def enhance_plate(img):
+    img = cv2.resize(img, None, fx=2.5, fy=2.5, interpolation=cv2.INTER_CUBIC)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    blur = cv2.GaussianBlur(gray, (0, 0), sigmaX=25)
+    sharp = cv2.addWeighted(gray, 1.8, blur, -0.8, 0)
+
+    th = cv2.adaptiveThreshold(
+        sharp, 255,
+        cv2.ADAPTIVE_THRESH_MEAN_C,
+        cv2.THRESH_BINARY,
+        25, 15
+    )
+
+    return th
 
 def read_english_plate(image_path):
     img = cv2.imread(image_path)
     if img is None:
+        print("❌ Image not found")
         return None
 
-    # 1️⃣ Strong grayscale
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    img = enhance_plate(img)
 
-    # 2️⃣ Upscale aggressively
-    h, w = gray.shape
-    gray = cv2.resize(gray, (w * 3, h * 3), interpolation=cv2.INTER_CUBIC)
+    results = reader_en.readtext(img, detail=0)
 
-    # 3️⃣ Contrast boost
-    gray = cv2.equalizeHist(gray)
+    raw = " ".join(results).upper()
 
-    # 4️⃣ Final binarization
-    thresh = cv2.adaptiveThreshold(
-        gray, 255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY, 31, 10
-    )
+    clean = "".join(re.findall(r"[A-Z0-9]", raw))
 
-    # 5️⃣ OCR
-    results = reader.readtext(thresh, detail=0, paragraph=False)
-
-    if not results:
+    if clean == "":
         return None
 
-    raw = "".join(results).upper()
-
-    # ✅ Hard cleaning — only A-Z + 0-9
-    raw = raw.replace("O", "0")
-    raw = raw.replace("I", "1")
-    raw = raw.replace("S", "5")
-    raw = re.sub(r"[^A-Z0-9]", "", raw)
-
-    if len(raw) < 4:
-        return None
-
-    return raw
+    return clean

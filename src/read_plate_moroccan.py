@@ -2,12 +2,13 @@ import cv2
 import easyocr
 import re
 
-# Arabic + English reader
+# ✅ EasyOCR only (Arabic + English)
 reader_ma = easyocr.Reader(['ar', 'en'], gpu=False)
+
 
 def format_moroccan_plate(text):
     text = text.replace(" ", "")
-    text = re.sub(r"[^0-9A-Za-z\u0600-\u06FF]", "", text)
+    text = re.sub(r"[^0-9\u0600-\u06FF]", "", text)
 
     letter = ""
     idx_letter = -1
@@ -36,6 +37,7 @@ def format_moroccan_plate(text):
     final = f"{left_digits} {letter} {right_digits}".strip()
     return final
 
+
 def read_moroccan_plate(image_path):
     img = cv2.imread(image_path)
     if img is None:
@@ -47,6 +49,7 @@ def read_moroccan_plate(image_path):
     if max(h, w) < 200:
         gray = cv2.resize(gray, (w * 2, h * 2), interpolation=cv2.INTER_CUBIC)
 
+    # ✅ OCR
     result = reader_ma.readtext(gray)
 
     if not result:
@@ -59,3 +62,18 @@ def read_moroccan_plate(image_path):
         return None
 
     return formatted
+
+
+# ============ TERMINAL TEST MODE ============
+
+if __name__ == "__main__":
+    import sys
+
+    if len(sys.argv) < 2:
+        print("❌ Usage: python read_plate_moroccan.py path_to_image.jpg")
+        exit()
+
+    img_path = sys.argv[1]
+    plate = read_moroccan_plate(img_path)
+
+    print("✅ MOROCCAN PLATE:", plate)

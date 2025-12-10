@@ -8,15 +8,12 @@ from ultralytics import YOLO
 from read_plate_english import read_english_plate
 from read_plate_moroccan import read_moroccan_plate
 
-# ============================
+
 # LOAD YOLO MODEL
-# ============================
 MODEL_PATH = "models/yolo/lp_detector_v11_best.pt"
 detector = YOLO(MODEL_PATH)
 
-# ============================
 # STREAMLIT CONFIG
-# ============================
 st.set_page_config(page_title="ALPR System", layout="centered")
 st.title("ALPR – License Plate Recognition System")
 
@@ -30,9 +27,8 @@ plate_type = st.selectbox(
     ["English / International", "Moroccan"]
 )
 
-# ============================
+
 # IMAGE PROCESSING
-# ============================
 if uploaded_file:
 
     file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
@@ -50,7 +46,7 @@ if uploaded_file:
         else:
             boxes = results[0].boxes.xyxy.cpu().numpy()
 
-            # ✅ SELECT LARGEST BOX
+            # SELECT LARGEST BOX
             largest_box = None
             largest_area = 0
 
@@ -66,16 +62,13 @@ if uploaded_file:
             else:
                 x1, y1, x2, y2 = largest_box
 
-                # ============================
-                # ✅ STEP 1 — RAW YOLO BOX
-                # ============================
+                # STEP 1 — RAW YOLO BOX
                 raw_box_img = img.copy()
                 cv2.rectangle(raw_box_img, (x1, y1), (x2, y2), (0, 0, 255), 2)
                 st.image(raw_box_img, channels="BGR", caption="Step 1: Raw YOLO Detection")
 
-                # ============================
-                # ✅ STEP 2 — EXPANDED BOX (MOROCCAN FIX)
-                # ============================
+
+                # STEP 2 — EXPANDED BOX (MOROCCAN FIX)
                 h, w, _ = img.shape
                 plate_width = x2 - x1
                 plate_height = y2 - y1
@@ -92,9 +85,7 @@ if uploaded_file:
                 cv2.rectangle(expanded_img, (x1e, y1e), (x2e, y2e), (255, 0, 0), 2)
                 st.image(expanded_img, channels="BGR", caption="Step 2: Expanded Detection")
 
-                # ============================
-                # ✅ STEP 3 — FINAL CROP SENT TO OCR
-                # ============================
+                # STEP 3 — FINAL CROP SENT TO OCR
                 crop = img[y1e:y2e, x1e:x2e]
 
                 if crop.size == 0:
@@ -102,16 +93,13 @@ if uploaded_file:
                 else:
                     st.image(crop, channels="BGR", caption=" Step 3: Final OCR Crop")
 
-                    # ============================
                     # SAVE TEMP IMAGE
-                    # ============================
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
                         cv2.imwrite(tmp.name, crop)
                         crop_path = tmp.name
 
-                    # ============================
+
                     # OCR
-                    # ============================
                     with st.spinner("Reading plate with OCR..."):
                         if plate_type == "English / International":
                             result = read_english_plate(crop_path)
@@ -120,9 +108,7 @@ if uploaded_file:
 
                     os.remove(crop_path)
 
-                    # ============================
                     # DISPLAY RESULT
-                    # ============================
                     if result:
                         st.success(f"Detected Plate: {result}")
                     else:
