@@ -54,7 +54,7 @@ def detect_plate(image_path):
         print("Empty crop")
         return None
 
-    crop_path = os.path.join(OUT_PLATE_DIR, "plate_crop.jpg")
+    crop_path = os.path.join(OUT_PLATE_DIR, f"plate_{os.path.basename(image_path)}")
     cv2.imwrite(crop_path, crop)
 
-    return crop_path
+    return crop_path,crop
